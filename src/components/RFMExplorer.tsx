@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
-import { Search, SlidersHorizontal, Download, Sparkles, X, ChevronRight, Check, AlertCircle, FileSpreadsheet, Send } from "lucide-react";
+import { Search, SlidersHorizontal, Download, Sparkles, X, ChevronRight, Check, AlertCircle, FileSpreadsheet, Send, LineChart, Plus, Pencil, Trash2 } from "lucide-react";
 import { CustomerRFM, Transaction, SegmentType, CustomerCampaignOutreach } from "../types";
-import { SEGMENT_METRICS, processTransactionsToRFM, assignSegment } from "../mockDataUtils";
+import { SEGMENT_METRICS, processTransactionsToRFM, assignSegment, forecastCLV, recalculateCustomerScores } from "../mockDataUtils";
 
 interface RFMExplorerProps {
   customers: CustomerRFM[];
@@ -14,11 +14,30 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
   const [selectedSegment, setSelectedSegment] = useState<string>("All");
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRFM | null>(null);
   
+  // Manual Customer Editing & Creation states
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<CustomerRFM | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  
+  // Form values
+  const [formCustomerId, setFormCustomerId] = useState("");
+  const [formRecency, setFormRecency] = useState(15);
+  const [formFrequency, setFormFrequency] = useState(2);
+  const [formMonetary, setFormMonetary] = useState(50);
+  const [formAge, setFormAge] = useState(120);
+  const [formError, setFormError] = useState<string | null>(null);
+  
   // Single-Customer Outreach AI Generation States
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState<CustomerCampaignOutreach | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
+
+  // Dynamic Customer CLV Calculation States (Live Prediction features for businesses)
+  const [localRetentionRate, setLocalRetentionRate] = useState<number>(0.75);
+  const [localGrossMargin, setLocalGrossMargin] = useState<number>(0.60);
+  const [localDiscountRate, setLocalDiscountRate] = useState<number>(0.08);
+  const [localHorizon, setLocalHorizon] = useState<number>(3);
 
   // File Upload Handlers
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -195,6 +214,125 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
     URL.revokeObjectURL(url);
   };
 
+  // Open modal in either Edit or Add Mode
+  const openAddModal = (customer: CustomerRFM | null = null) => {
+    if (customer) {
+      setEditingCustomer(customer);
+      setFormCustomerId(customer.customer_id);
+      setFormRecency(customer.recency);
+      setFormFrequency(customer.frequency);
+      setFormMonetary(customer.monetary);
+      setFormAge(customer.customer_age_days);
+    } else {
+      setEditingCustomer(null);
+      setFormCustomerId(`CUST-${Math.floor(1000 + Math.random() * 9000)}`);
+      setFormRecency(10);
+      setFormFrequency(3);
+      setFormMonetary(75);
+      setFormAge(120);
+    }
+    setFormError(null);
+    setIsAddModalOpen(true);
+  };
+
+  const handleSaveCustomer = (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+
+    const targetId = formCustomerId.trim().toUpperCase();
+    if (!targetId) {
+      setFormError("Customer ID is required.");
+      return;
+    }
+
+    // Check duplicate ID if adding new customer
+    if (!editingCustomer) {
+      const exists = customers.some(c => c.customer_id.toUpperCase() === targetId);
+      if (exists) {
+        setFormError(`A customer with ID "${targetId}" already exists.`);
+        return;
+      }
+    }
+
+    if (Number(formRecency) < 0) {
+      setFormError("Recency days cannot be negative.");
+      return;
+    }
+    if (Number(formFrequency) < 0) {
+      setFormError("Frequency cannot be negative.");
+      return;
+    }
+    if (Number(formMonetary) < 0) {
+      setFormError("Average order spend cannot be negative.");
+      return;
+    }
+    if (Number(formAge) < Number(formRecency)) {
+      setFormError("Account longevity (age) must be greater than or equal to recency (days since last purchase).");
+      return;
+    }
+
+    const rawCustomerInput = {
+      customer_id: targetId,
+      recency: Number(formRecency),
+      frequency: Number(formFrequency),
+      monetary: Number(formMonetary),
+      total_purchases: Number(formFrequency) + 1,
+      lifetime_revenue: Number(formMonetary) * (Number(formFrequency) + 1),
+      customer_age_days: Number(formAge)
+    };
+
+    let updatedRawList: any[] = [];
+    if (editingCustomer) {
+      // Edit mode
+      updatedRawList = customers.map(c => 
+        c.customer_id === editingCustomer.customer_id ? { ...c, ...rawCustomerInput } : c
+      );
+    } else {
+      // Add mode
+      updatedRawList = [rawCustomerInput, ...customers];
+    }
+
+    const recomputedCustomers = recalculateCustomerScores(updatedRawList);
+
+    // Sync transaction history
+    let updatedTransactions = [...transactions];
+    if (editingCustomer) {
+      if (editingCustomer.customer_id !== targetId) {
+        updatedTransactions = transactions.map(t => 
+          t.customer_id === editingCustomer.customer_id ? { ...t, customer_id: targetId } : t
+        );
+      }
+    } else {
+      updatedTransactions.push({
+        transaction_id: `TXN-MANUAL-${100000 + Math.floor(Math.random() * 900000)}`,
+        customer_id: targetId,
+        timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
+        amount: Number(formMonetary) * (Number(formFrequency) + 1),
+        category: "Manual Entry"
+      });
+    }
+
+    onDataLoaded(updatedTransactions, recomputedCustomers);
+
+    if (editingCustomer) {
+      const match = recomputedCustomers.find(x => x.customer_id === targetId);
+      if (match) setSelectedCustomer(match);
+    }
+
+    setIsAddModalOpen(false);
+    setEditingCustomer(null);
+  };
+
+  const handleDeleteCustomer = (idToDelete: string) => {
+    const updatedRawList = customers.filter(c => c.customer_id !== idToDelete);
+    const recomputedCustomers = recalculateCustomerScores(updatedRawList);
+    const updatedTransactions = transactions.filter(t => t.customer_id !== idToDelete);
+
+    onDataLoaded(updatedTransactions, recomputedCustomers);
+    setSelectedCustomer(null);
+    setShowDeleteConfirm(false);
+  };
+
   return (
     <div id="rfm-explorer-wrapper" className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-1">
       {/* Search and Database Upload Deck */}
@@ -222,7 +360,7 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
             <button
               id="upload-data-btn"
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-900 dark:bg-zinc-1 w-fit border border-transparent dark:border-transparent text-white dark:text-zinc-900 text-xs font-semibold rounded-lg hover:opacity-90 transition shadow-xs cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-900 dark:bg-zinc-1 border border-transparent text-zinc-900 text-white dark:text-zinc-900 text-xs font-semibold rounded-lg hover:opacity-90 transition shadow-xs cursor-pointer"
             >
               <FileSpreadsheet className="h-3.5 w-3.5 text-sky-400 dark:text-sky-600" />
               Upload Transaction CSV
@@ -234,6 +372,15 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
               accept=".csv"
               className="hidden"
             />
+
+            <button
+              id="add-customer-manually-btn"
+              onClick={() => openAddModal(null)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 border border-transparent text-white text-xs font-bold rounded-lg transition shadow-md cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5 text-white" />
+              Add Customer Manually
+            </button>
           </div>
         </div>
 
@@ -291,13 +438,14 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
                 <th className="px-5 py-3.5 text-right">Frequency (Orders)</th>
                 <th className="px-5 py-3.5 text-right">Monetary Spend</th>
                 <th className="px-5 py-3.5 text-right">Total Revenue</th>
+                <th className="px-5 py-3.5 text-right text-blue-600 dark:text-blue-400">Predicted CLV (3-Yr)</th>
                 <th className="px-5 py-3.5 text-center">Active Index</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900/20">
               {filteredCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-zinc-400 font-medium bg-zinc-50/20 dark:bg-transparent">
+                  <td colSpan={9} className="px-5 py-12 text-center text-zinc-400 font-medium bg-zinc-50/20 dark:bg-transparent">
                     No matching customer keys found or imported. Try modifying filters.
                   </td>
                 </tr>
@@ -313,7 +461,7 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
                         setAiResult(null);
                         setAiError(null);
                       }}
-                      className="hover:bg-zinc-50/70 dark:hover:bg-zinc-850/40 cursor-pointer transition duration-150"
+                      className="hover:bg-zinc-50/70 dark:hover:bg-zinc-855/40 cursor-pointer transition duration-150"
                     >
                       <td className="px-5 py-3.5 font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                         {customer.customer_id}
@@ -337,6 +485,9 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
                       </td>
                       <td className="px-5 py-3.5 text-right font-mono font-black text-slate-900 dark:text-slate-100">
                         ${customer.lifetime_revenue.toFixed(2)}
+                      </td>
+                      <td className="px-5 py-3.5 text-right font-mono font-bold text-blue-600 dark:text-blue-450">
+                        ${forecastCLV(customer, 0.75, 0.08, 0.60, 3).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-5 py-3.5 text-center">
                         <span className={`inline-block w-2.5 h-2.5 rounded-full ${customer.recency < 60 ? 'bg-emerald-500' : 'bg-red-500'}`} />
@@ -367,20 +518,77 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
                   {selectedCustomer.customer_id}
                 </h3>
               </div>
-              <button
-                id="close-drawer"
-                onClick={() => {
-                  setSelectedCustomer(null);
-                  setAiResult(null);
-                }}
-                className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-850 cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div id="drawer-actions-strip" className="flex items-center gap-1.5">
+                <button
+                  id="drawer-edit-btn"
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    openAddModal(selectedCustomer);
+                  }}
+                  className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:text-blue-650 dark:hover:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-850 cursor-pointer flex items-center justify-center transition"
+                  title="Modify Profile Manual Fields"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  id="drawer-delete-btn"
+                  onClick={() => setShowDeleteConfirm(prev => !prev)}
+                  className={`p-2 rounded-lg border text-zinc-500 flex items-center justify-center transition cursor-pointer ${
+                    showDeleteConfirm 
+                      ? "bg-red-50 dark:bg-red-950/30 text-red-600 border-red-200 dark:border-red-900/40" 
+                      : "border-zinc-200 dark:border-zinc-800 hover:text-red-650 dark:hover:text-red-405 hover:bg-zinc-100 dark:hover:bg-zinc-855"
+                  }`}
+                  title="Remove Profile File"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+                <div className="w-[1px] h-5 bg-zinc-200 dark:bg-zinc-800 mx-1" />
+                <button
+                  id="close-drawer"
+                  onClick={() => {
+                    setSelectedCustomer(null);
+                    setAiResult(null);
+                    setShowDeleteConfirm(false);
+                  }}
+                  className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-400 hover:text-zinc-650 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-850 cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             {/* Profile Content */}
             <div id="drawer-body" className="p-6 flex-1 space-y-6">
+              {/* Delete confirmation banner inline */}
+              {showDeleteConfirm && (
+                <div id="delete-confirmation-banner" className="p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-xl space-y-3 animate-fade-in text-xs text-red-800 dark:text-red-300">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold">Are you absolutely sure?</p>
+                      <p className="text-zinc-500 dark:text-zinc-400 mt-1 leading-normal">
+                        This will permanently delete customer <strong className="font-semibold text-zinc-900 dark:text-zinc-100">{selectedCustomer.customer_id}</strong> and all associated sales records. Other customer segments may automatically recompute quantiles.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      id="cancel-delete-btn"
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="px-2.5 py-1 text-[11px] font-bold border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md text-zinc-700 dark:text-zinc-300 transition cursor-pointer"
+                    >
+                      Keep Customer
+                    </button>
+                    <button
+                      id="confirm-delete-btn"
+                      onClick={() => handleDeleteCustomer(selectedCustomer.customer_id)}
+                      className="px-2.5 py-1 text-[11px] font-bold bg-red-650 hover:bg-red-700 text-white rounded-md transition shadow-xs cursor-pointer"
+                    >
+                      Yes, Delete Record
+                    </button>
+                  </div>
+                </div>
+              )}
               {/* Segment detail */}
               <div id="profile-segment-card" className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/10 space-y-3">
                 <div className="flex justify-between items-start">
@@ -430,7 +638,7 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
                     <span className="text-zinc-500 font-medium">Account Longevity Age</span>
                     <span className="font-semibold text-zinc-800 dark:text-zinc-200">{selectedCustomer.customer_age_days} Days</span>
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 border-b border-zinc-100 dark:border-zinc-800/60 pb-4">
                     <div className="flex justify-between items-center text-xs text-zinc-400 font-semibold">
                       <span>Activity Survival Index (Probability)</span>
                       <span className={selectedCustomer.survival_probability > 0.6 ? 'text-emerald-500' : selectedCustomer.survival_probability > 0.3 ? 'text-amber-500' : 'text-red-500'}>
@@ -449,8 +657,98 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
                 </div>
               </div>
 
+              {/* Interactive CLV Prediction Suite */}
+              <div id="interactive-clv-prediction-suite" className="space-y-3.5 bg-blue-50/10 dark:bg-zinc-950/20 p-4 rounded-xl border border-blue-100/60 dark:border-zinc-800/80">
+                <div className="flex items-center gap-2">
+                  <LineChart className="h-4.5 w-4.5 text-blue-500 shrink-0" />
+                  <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                    Interactive CLV Prediction Suite
+                  </h4>
+                </div>
+                <p className="text-xs text-zinc-400 leading-normal">
+                  Refine the parameters below to calculate this specific client&apos;s forecasted customer lifetime value.
+                </p>
+
+                {/* Range sliders */}
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 block uppercase">
+                      Annual Retention ({Math.round(localRetentionRate * 100)}%)
+                    </label>
+                    <input
+                      type="range"
+                      min="0.30"
+                      max="0.99"
+                      step="0.05"
+                      value={localRetentionRate}
+                      onChange={(e) => setLocalRetentionRate(parseFloat(e.target.value))}
+                      className="w-full accent-blue-600 bg-zinc-200 dark:bg-zinc-800 h-1 rounded-lg cursor-pointer"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 block uppercase">
+                      Profit Margin ({Math.round(localGrossMargin * 100)}%)
+                    </label>
+                    <input
+                      type="range"
+                      min="0.10"
+                      max="0.95"
+                      step="0.05"
+                      value={localGrossMargin}
+                      onChange={(e) => setLocalGrossMargin(parseFloat(e.target.value))}
+                      className="w-full accent-blue-600 bg-zinc-200 dark:bg-zinc-800 h-1 rounded-lg cursor-pointer"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 block uppercase">
+                      Discount Rate ({Math.round(localDiscountRate * 100)}%)
+                    </label>
+                    <input
+                      type="range"
+                      min="0.02"
+                      max="0.25"
+                      step="0.01"
+                      value={localDiscountRate}
+                      onChange={(e) => setLocalDiscountRate(parseFloat(e.target.value))}
+                      className="w-full accent-blue-600 bg-zinc-200 dark:bg-zinc-800 h-1 rounded-lg cursor-pointer"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 block uppercase">
+                      Horizon ({localHorizon} Years)
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="5"
+                      step="1"
+                      value={localHorizon}
+                      onChange={(e) => setLocalHorizon(parseInt(e.target.value))}
+                      className="w-full accent-blue-600 bg-zinc-200 dark:bg-zinc-800 h-1 rounded-lg cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Score badge */}
+                <div className="p-3 bg-blue-100/30 dark:bg-blue-955/35 border border-blue-200/50 dark:border-blue-900/30 rounded-lg flex items-center justify-between mt-3">
+                  <div>
+                    <span className="text-[9px] font-black uppercase text-blue-700 dark:text-blue-400 tracking-wider block">
+                      Projected Future Value
+                    </span>
+                    <span className="text-[10px] text-zinc-400 block mt-0.5">
+                      Net added profit over {localHorizon} yr{localHorizon > 1 ? "s" : ""}:
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xl font-black font-mono text-blue-600 dark:text-blue-400 block">
+                      ${forecastCLV(selectedCustomer, localRetentionRate, localDiscountRate, localGrossMargin, localHorizon).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               {/* Smart Campaigns / Outreach AI Block */}
-              <div id="smart-outreach-block" className="border-t border-zinc-100 dark:border-zinc-800.80 pt-6 space-y-4">
+              <div id="smart-outreach-block" className="border-t border-zinc-100 dark:border-zinc-800/80 pt-6 space-y-4">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4.5 w-4.5 text-blue-500 shrink-0" />
                   <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-200">
@@ -535,9 +833,193 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
             {/* Slideover Footer */}
             <div id="drawer-footer" className="p-4 bg-zinc-50 dark:bg-zinc-950/40 border-t border-zinc-100 dark:border-zinc-800/65 text-center">
               <span className="text-[10px] font-medium text-zinc-400">
-                Data generated on snapshot: 2026-05-27 UTC
+                Powered by Vanguard Customer Intelligence Engine
               </span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Add / Edit Modal Overlay */}
+      {isAddModalOpen && (
+        <div id="add-edit-modal-backdrop" className="fixed inset-0 bg-black/60 backdrop-blur-xs z-55 flex items-center justify-center p-4 animate-fade-in">
+          <div
+            id="add-edit-modal-surface"
+            className="w-full max-w-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-scale-in"
+          >
+            {/* Modal Header */}
+            <div id="modal-header" className="px-6 py-4 bg-zinc-50 dark:bg-zinc-950/40 border-b border-zinc-100 dark:border-zinc-800/60 flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-wider text-zinc-900 dark:text-zinc-100">
+                  {editingCustomer ? "Edit Customer Data File" : "Add Customer Manually"}
+                </h3>
+                <p className="text-[10px] text-zinc-400 font-bold tracking-tight mt-0.5">
+                  Input direct behavioural metrics to trigger immediate analytical clustering &amp; CLV estimation.
+                </p>
+              </div>
+              <button
+                id="close-modal-btn"
+                type="button"
+                onClick={() => {
+                  setIsAddModalOpen(false);
+                  setEditingCustomer(null);
+                }}
+                className="p-1 text-zinc-400 hover:text-zinc-650 dark:hover:text-zinc-250 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg cursor-pointer transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Form Wrap */}
+            <form onSubmit={handleSaveCustomer} className="flex-1 flex flex-col overflow-y-auto">
+              <div className="p-6 space-y-4">
+                
+                {formError && (
+                  <div id="modal-form-error" className="p-3 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/30 rounded-lg flex items-start gap-2.5 text-xs">
+                    <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <span className="font-semibold leading-normal">{formError}</span>
+                  </div>
+                )}
+
+                {/* Customer ID field */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide block">
+                    Customer ID / Unique Key
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. CUST-VIP-201"
+                    value={formCustomerId}
+                    onChange={(e) => setFormCustomerId(e.target.value)}
+                    disabled={!!editingCustomer}
+                    className="w-full px-3.5 py-2 text-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/30 dark:disabled:bg-zinc-950/55 disabled:cursor-not-allowed rounded-lg text-zinc-800 dark:text-zinc-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 font-bold"
+                  />
+                  {!editingCustomer && (
+                    <span className="text-[9px] text-zinc-400 block font-medium">
+                      Ensure this matches the custom identifier syntax of your corporate business keys if needed.
+                    </span>
+                  )}
+                </div>
+
+                {/* Recency and Frequency row */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide block">
+                      Recency (Days Dormant)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={formRecency}
+                      onChange={(e) => setFormRecency(Number(e.target.value))}
+                      className="w-full px-3.5 py-2 text-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/30 rounded-lg text-zinc-850 dark:text-zinc-200 font-mono font-semibold"
+                    />
+                    <span className="text-[9px] text-zinc-400 block">
+                      Days since last purchase.
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide block">
+                      Frequency (Repeat Checkouts)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={formFrequency}
+                      onChange={(e) => setFormFrequency(Number(e.target.value))}
+                      className="w-full px-3.5 py-2 text-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/30 rounded-lg text-zinc-855 dark:text-zinc-200 font-mono font-semibold"
+                    />
+                    <span className="text-[9px] text-zinc-400 block">
+                      Total historical orders minus 1.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Monetary and Account Longevity Row */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide block">
+                      Average Order Spend ($ Value)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      step="0.01"
+                      value={formMonetary}
+                      onChange={(e) => setFormMonetary(Number(e.target.value))}
+                      className="w-full px-3.5 py-2 text-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/30 rounded-lg text-zinc-855 dark:text-zinc-200 font-mono font-semibold"
+                    />
+                    <span className="text-[9px] text-zinc-400 block">
+                      Avg spend per successful order.
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide block">
+                      Account Longevity (Days)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={formAge}
+                      onChange={(e) => setFormAge(Number(e.target.value))}
+                      className="w-full px-3.5 py-2 text-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/30 rounded-lg text-zinc-855 dark:text-zinc-200 font-mono font-semibold"
+                    />
+                    <span className="text-[9px] text-zinc-400 block">
+                      Total days active (must be &ge; Recency).
+                    </span>
+                  </div>
+                </div>
+
+                {/* Computed Value Deck Indicator */}
+                <div className="p-3 bg-zinc-50 dark:bg-zinc-950/55 border border-zinc-100 dark:border-zinc-855 rounded-xl space-y-1 text-xs">
+                  <span className="text-[9px] uppercase font-black tracking-wider text-zinc-450 block">
+                    Auto-Computed Enterprise Metrics
+                  </span>
+                  <div className="flex justify-between items-center text-zinc-500 dark:text-zinc-400">
+                    <span>Total Revenue Contribution:</span>
+                    <strong className="font-extrabold text-zinc-800 dark:text-zinc-200 font-mono">
+                      ${(Number(formMonetary) * (Number(formFrequency) + 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+                  <div className="flex justify-between items-center text-zinc-500 dark:text-zinc-400">
+                    <span>Total Checkout Lifetime Orders:</span>
+                    <strong className="font-extrabold text-zinc-800 dark:text-zinc-200 font-mono">
+                      {Number(formFrequency) + 1}
+                    </strong>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Form Actions Footer */}
+              <div id="modal-footer" className="px-6 py-4 bg-zinc-50 dark:bg-zinc-950/40 border-t border-zinc-100 dark:border-zinc-800/60 flex justify-end gap-3.5">
+                <button
+                  id="cancel-modal-btn"
+                  type="button"
+                  onClick={() => {
+                    setIsAddModalOpen(false);
+                    setEditingCustomer(null);
+                  }}
+                  className="px-4 py-2 border border-zinc-200 dark:border-zinc-800 text-xs font-semibold rounded-lg text-zinc-650 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-850 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  id="save-modal-btn"
+                  type="submit"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-750 text-white text-xs font-bold rounded-lg cursor-pointer shadow-xs transition"
+                >
+                  {editingCustomer ? "Save Changes" : "Create Analysis Profile"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -4,12 +4,7 @@ import {
   LayoutDashboard, 
   Users, 
   LineChart, 
-  Sparkles, 
-  Terminal, 
-  Flame, 
-  HelpCircle,
-  FileCode,
-  Github
+  Sparkles
 } from "lucide-react";
 
 // Subcomponents
@@ -18,7 +13,6 @@ import RFMExplorer from "./components/RFMExplorer";
 import CLVSimulator from "./components/CLVSimulator";
 import CohortHeatmap from "./components/CohortHeatmap";
 import AIInsightsPanel from "./components/AIInsightsPanel";
-import PythonHub from "./components/PythonHub";
 
 // Utils and types
 import { generateInitialMockData, calculateSegmentStats } from "./mockDataUtils";
@@ -46,11 +40,10 @@ export default function App() {
   };
 
   const tabsConfig = [
-    { id: "dashboard", label: "Executive Boardroom", icon: LayoutDashboard },
-    { id: "explorer", label: "RFM Grid Ingestion", icon: Users },
-    { id: "simulator", label: "ML Forecast Curves", icon: LineChart },
-    { id: "ai", label: "Growth Intelligence", icon: Sparkles },
-    { id: "repo", label: "💻 Python ML Repository", icon: Terminal }
+    { id: "dashboard", label: "Dashboard Overview", icon: LayoutDashboard },
+    { id: "explorer", label: "Customer RFM Explorer", icon: Users },
+    { id: "simulator", label: "Future CLV Simulator", icon: LineChart },
+    { id: "ai", label: "AI Growth Insights", icon: Sparkles }
   ] as const;
 
   return (
@@ -79,20 +72,11 @@ export default function App() {
             </div>
           </div>
 
-          {/* Social / Action hubs */}
+          {/* Social / Action hubs (Removed Snapshot and Source repo as requested) */}
           <div id="header-badges-deck" className="flex items-center gap-2">
             <span className="text-[11px] font-mono text-zinc-400 font-semibold bg-zinc-100 dark:bg-zinc-850 px-2.5 py-1 rounded-md border border-zinc-200/40 select-all">
-              SNAPSHOT: 2026-05-27 UTC
+              SYSTEM LEVEL: OPERATIONAL
             </span>
-            <div className="flex items-center pr-1 border-r border-zinc-200 dark:border-zinc-800/85 mr-1" />
-            <a
-              href="#python-hub-wrap"
-              onClick={() => setActiveTab("repo")}
-              className="flex items-center gap-1 px-3 py-1 bg-zinc-100 hover:bg-zinc-200/60 dark:bg-zinc-850 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-[10px] uppercase font-bold rounded-md text-zinc-600 dark:text-zinc-300 transition"
-            >
-              <Terminal className="h-3.5 w-3.5" />
-              Source repo
-            </a>
           </div>
         </div>
       </header>
@@ -208,13 +192,6 @@ export default function App() {
             </div>
           )}
 
-          {/* T5 - Real physical Python repository codebase hub */}
-          {activeTab === "repo" && (
-            <div id="view-repo" className="animate-fade-in">
-              <PythonHub />
-            </div>
-          )}
-
         </div>
       </main>
 
@@ -222,12 +199,12 @@ export default function App() {
       <footer id="application-footer" className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 py-6 px-6 mt-12 text-center text-xs text-zinc-400 select-none">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <p className="font-medium text-zinc-500 dark:text-zinc-400">
-            © 2026 Vanguard Analytics Platform. Open-source Python pipeline sandbox.
+            © 2026 Vanguard Analytics Platform. Customer Intelligence & CLV Prediction System.
           </p>
           <div className="flex items-center gap-3">
-            <span className="hover:text-zinc-600 transition cursor-help">Status: Active Operations</span>
+            <span className="hover:text-zinc-650 transition cursor-help">Status: Active Operations</span>
             <span>•</span>
-            <span className="hover:text-zinc-600 transition cursor-help">Schema: BG/NBD Formulation</span>
+            <span className="hover:text-zinc-650 transition cursor-help">Schema: Live BG/NBD Predictions</span>
           </div>
         </div>
       </footer>

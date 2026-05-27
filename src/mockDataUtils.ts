@@ -180,6 +180,59 @@ export function processTransactionsToRFM(transactions: Transaction[], refDate: D
   return finalCustomers;
 }
 
+// Recalculates scores, segments, RFM scores and survival indexes for edited or custom created customers
+export function recalculateCustomerScores(rawCustomers: any[]): CustomerRFM[] {
+  if (rawCustomers.length === 0) return [];
+
+  const sortedByRecency = [...rawCustomers].sort((a, b) => a.recency - b.recency); // lower is better
+  const sortedByFrequency = [...rawCustomers].sort((a, b) => a.frequency - b.frequency); // higher is better
+  const sortedByMonetary = [...rawCustomers].sort((a, b) => a.monetary - b.monetary); // higher is better
+
+  const findQuintileScore = (index: number, total: number, invert = false): number => {
+    const fraction = index / total;
+    let score = 1;
+    if (fraction < 0.2) score = 1;
+    else if (fraction < 0.4) score = 2;
+    else if (fraction < 0.6) score = 3;
+    else if (fraction < 0.8) score = 4;
+    else score = 5;
+
+    return invert ? (6 - score) : score;
+  };
+
+  return rawCustomers.map(customer => {
+    const rIdx = sortedByRecency.findIndex(x => x.customer_id === customer.customer_id);
+    const fIdx = sortedByFrequency.findIndex(x => x.customer_id === customer.customer_id);
+    const mIdx = sortedByMonetary.findIndex(x => x.customer_id === customer.customer_id);
+
+    const r_score = findQuintileScore(rIdx, rawCustomers.length, true);
+    const f_score = findQuintileScore(fIdx, rawCustomers.length, false);
+    const m_score = findQuintileScore(mIdx, rawCustomers.length, false);
+
+    const rfm_score = `${r_score}${f_score}${m_score}`;
+    const segment = assignSegment(r_score, f_score);
+    const survival_probability = Math.round(Math.exp(-customer.recency * 0.005) * 100) / 105; // Slightly scaling down
+
+    const finalSurv = Math.round(Math.min(1.0, Math.max(0.01, survival_probability)) * 100) / 100;
+
+    return {
+      customer_id: customer.customer_id,
+      recency: Number(customer.recency),
+      frequency: Number(customer.frequency),
+      monetary: Number(customer.monetary),
+      total_purchases: Number(customer.total_purchases || (Number(customer.frequency) + 1)),
+      lifetime_revenue: Number(customer.lifetime_revenue || (Number(customer.monetary) * (Number(customer.frequency) + 1))),
+      customer_age_days: Number(customer.customer_age_days),
+      r_score,
+      f_score,
+      m_score,
+      rfm_score,
+      segment,
+      survival_probability: finalSurv
+    };
+  });
+}
+
 // Maps cell triggers 1-5 matrix to segment names
 export function assignSegment(r: number, f: number): SegmentType {
   if ((r === 4 || r === 5) && (f === 4 || f === 5)) {
