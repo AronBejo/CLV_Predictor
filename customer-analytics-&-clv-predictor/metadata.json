@@ -1,0 +1,6 @@
+{
+  "name": "Customer Analytics & CLV Predictor",
+  "description": "An interactive Customer Analytics platform featuring Recency-Frequency-Monetary (RFM) segmentation, Cohort Retention Heatmaps, Multi-Horizon Customer Lifetime Value (CLV) predictions, and a downloadable Python ML pipeline.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
