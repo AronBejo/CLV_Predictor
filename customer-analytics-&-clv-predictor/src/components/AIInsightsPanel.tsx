@@ -104,7 +104,18 @@ Let me know what you would like to brainstorm!`,
         })
       });
 
-      const result = await response.json();
+      const contentType = response.headers.get("content-type");
+      let result;
+      if (contentType && contentType.includes("application/json")) {
+        result = await response.json();
+      } else {
+        const textResponse = await response.text();
+        if (textResponse.trim().startsWith("<!DOCTYPE") || textResponse.trim().startsWith("<html") || textResponse.includes("page code") || textResponse.includes("not found")) {
+          throw new Error("Copilot Request Interrupted: The API returned an HTML page (404/Routing Error). If deploying on Vercel/GitHub, verify 'vercel.json' is configured, and that you have deployed the Serverless Backend, or verify that your server is starting successfully.");
+        }
+        throw new Error(textResponse || "The server returned a non-JSON response.");
+      }
+
       if (!response.ok || !result.success) {
         throw new Error(result.error || "The AI system failed to compile response.");
       }

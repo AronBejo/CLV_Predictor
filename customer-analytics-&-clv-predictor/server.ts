@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 
 const PORT = 3000;
@@ -11,7 +10,7 @@ let aiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-    throw new Error("GEMINI_API_KEY is missing or unconfigured. Please configure it in AI Studio under Settings > Secrets.");
+    throw new Error("GEMINI_API_KEY is missing or unconfigured. Please configure it in your deployment environment variables.");
   }
   if (!aiClient) {
     aiClient = new GoogleGenAI({
@@ -26,9 +25,8 @@ function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
-async function startServer() {
-  const app = express();
-  app.use(express.json());
+export const app = express();
+app.use(express.json());
 
   // API Route - Get Smart Campaign Suggestions based on RFM customer segment statistics
   app.post("/api/smart-campaign-suggestions", async (req, res) => {
@@ -172,24 +170,31 @@ Return your response in standard JSON:
     }
   });
 
-  // Vite integration
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+// Only start full-stack server if not running inside a serverless / Vercel cloud environment
+const isVercel = process.env.VERCEL === "1" || !!process.env.VERCEL;
+
+if (!isVercel) {
+  async function startLocalServer() {
+    // Vite integration
+    if (process.env.NODE_ENV !== "production") {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } else {
+      const distPath = path.join(process.cwd(), "dist");
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`[Server] Customer Analytics & CLV Server running on http://localhost:${PORT}`);
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Server] Customer Analytics & CLV Server running on http://localhost:${PORT}`);
-  });
+  startLocalServer();
 }
-
-startServer();

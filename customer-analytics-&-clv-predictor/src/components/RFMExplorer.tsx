@@ -171,7 +171,18 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
         })
       });
 
-      const json = await response.json();
+      const contentType = response.headers.get("content-type");
+      let json;
+      if (contentType && contentType.includes("application/json")) {
+        json = await response.json();
+      } else {
+        const textResponse = await response.text();
+        if (textResponse.trim().startsWith("<!DOCTYPE") || textResponse.trim().startsWith("<html") || textResponse.includes("page code") || textResponse.includes("not found")) {
+          throw new Error("API Outreach Interrupted: The API returned an HTML page (404/Routing Error). If deploying on Vercel/GitHub, verify the project's 'vercel.json' is deployed so the backend routes requests to the serverless function.");
+        }
+        throw new Error(textResponse || "The server returned a non-JSON response.");
+      }
+
       if (!response.ok || !json.success) {
         throw new Error(json.error || "The AI models responded with an error.");
       }
