@@ -147,7 +147,7 @@ Let me know what you would like to brainstorm!`,
       // Bold handling
       if (part.startsWith("**") && part.endsWith("**")) {
         return (
-          <strong key={index} className="font-extrabold text-zinc-950 dark:text-zinc-50 bg-zinc-100/40 dark:bg-zinc-800/20 px-0.5 rounded-sm">
+          <strong key={index} className="font-extrabold text-zinc-950 bg-zinc-100/60 px-1 py-0.5 rounded-md">
             {part.slice(2, -2)}
           </strong>
         );
@@ -161,7 +161,7 @@ Let me know what you would like to brainstorm!`,
             {subParts.map((sub, i) => {
               if (i % 2 === 1) {
                 return (
-                  <code key={i} className="font-mono text-[11px] font-bold bg-muted bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-1 py-0.5 rounded border border-blue-100 dark:border-blue-900/30">
+                  <code key={i} className="font-mono text-[11px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100">
                     {sub}
                   </code>
                 );
@@ -181,21 +181,21 @@ Let me know what you would like to brainstorm!`,
     // 1. Headings
     if (trimmed.startsWith("### ")) {
       return (
-        <h4 key={lineIndex} className="text-xs font-bold text-zinc-950 dark:text-zinc-50 uppercase tracking-wider mt-4 pb-1 select-text">
+        <h4 key={lineIndex} className="text-xs font-extrabold text-zinc-900 uppercase tracking-wider mt-4 pb-1 select-text">
           {parseInlineElements(trimmed.substring(4))}
         </h4>
       );
     }
     if (trimmed.startsWith("## ")) {
       return (
-        <h3 key={lineIndex} className="text-sm font-black text-zinc-900 dark:text-zinc-50 tracking-tight mt-5 pb-1 select-text">
+        <h3 key={lineIndex} className="text-sm font-black text-zinc-900 tracking-tight mt-5 pb-1 select-text">
           {parseInlineElements(trimmed.substring(3))}
         </h3>
       );
     }
     if (trimmed.startsWith("# ")) {
       return (
-        <h2 key={lineIndex} className="text-base font-black text-zinc-900 dark:text-zinc-50 border-b border-zinc-100 dark:border-zinc-800 pb-1.5 mt-5 mb-2 select-text">
+        <h2 key={lineIndex} className="text-base font-black text-zinc-950 border-b border-zinc-200 pb-1.5 mt-5 mb-2 select-text">
           {parseInlineElements(trimmed.substring(2))}
         </h2>
       );
@@ -205,8 +205,8 @@ Let me know what you would like to brainstorm!`,
     if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
       return (
         <div key={lineIndex} className="flex items-start gap-2 ml-4 my-1 select-text">
-          <span className="text-blue-600 dark:text-blue-400 mt-1 select-none font-bold">▪</span>
-          <span className="text-zinc-800 dark:text-zinc-200 text-xs font-semibold leading-relaxed">
+          <span className="text-blue-600 mt-1 select-none font-bold">▪</span>
+          <span className="text-zinc-800 text-xs font-semibold leading-relaxed">
             {parseInlineElements(trimmed.substring(2))}
           </span>
         </div>
@@ -220,8 +220,8 @@ Let me know what you would like to brainstorm!`,
       const content = numMatch[2];
       return (
         <div key={lineIndex} className="flex items-start gap-2 ml-4 my-1 select-text">
-          <span className="text-blue-600 dark:text-blue-400 font-mono font-bold text-[11px] mt-0.5 select-none">{number}.</span>
-          <span className="text-zinc-800 dark:text-zinc-200 text-xs font-semibold leading-relaxed">
+          <span className="text-blue-600 font-mono font-bold text-[11px] mt-0.5 select-none">{number}.</span>
+          <span className="text-zinc-800 text-xs font-semibold leading-relaxed">
             {parseInlineElements(content)}
           </span>
         </div>
@@ -235,7 +235,7 @@ Let me know what you would like to brainstorm!`,
 
     // 5. Standard paragraph text line
     return (
-      <p key={lineIndex} className="text-zinc-700 dark:text-zinc-300 text-xs font-semibold leading-relaxed my-1 select-text">
+      <p key={lineIndex} className="text-zinc-700 text-xs font-semibold leading-relaxed my-1 select-text">
         {parseInlineElements(line)}
       </p>
     );
@@ -303,7 +303,7 @@ Let me know what you would like to brainstorm!`,
 
               <div className={`p-4.5 rounded-2xl relative shadow-xs leading-normal select-text ${
                 isAI
-                  ? "bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 rounded-tl-sm"
+                  ? "bg-white text-zinc-800 border border-zinc-200 rounded-tl-sm"
                   : "bg-blue-600 text-white rounded-tr-sm font-semibold text-xs"
               }`}>
                 {isAI ? (
@@ -312,7 +312,7 @@ Let me know what you would like to brainstorm!`,
                   <p className="whitespace-pre-wrap leading-relaxed select-text">{msg.content}</p>
                 )}
                 
-                <span className={`block text-[9px] mt-2 block select-none ${isAI ? "text-zinc-450 dark:text-zinc-550 font-medium" : "text-blue-105 font-bold"}`}>
+                <span className={`block text-[9px] mt-2 block select-none ${isAI ? "text-zinc-500 font-bold" : "text-blue-100 font-bold"}`}>
                   {msg.timestamp.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
                 </span>
               </div>
@@ -326,8 +326,8 @@ Let me know what you would like to brainstorm!`,
             <div className="p-2 rounded-xl bg-blue-600/10 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 shrink-0">
               <Bot className="h-4 w-4 animate-bounce" />
             </div>
-            <div className="bg-white dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 p-4 rounded-2xl rounded-tl-sm flex items-center gap-2 shadow-xs">
-              <span className="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 tracking-tight animate-pulse">
+            <div className="bg-white text-zinc-600 border border-zinc-200 p-4 rounded-2xl rounded-tl-sm flex items-center gap-2 shadow-xs">
+              <span className="text-[11px] font-bold text-zinc-600 tracking-tight animate-pulse">
                 Auditing cohort matrices and calculating re-engagement strategies...
               </span>
               <div className="flex gap-1.5 pl-1 shrink-0">
