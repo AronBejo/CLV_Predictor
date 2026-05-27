@@ -1,40 +1,106 @@
-import React, { useState, useEffect } from "react";
-import { Sparkles, Calendar, ArrowRight, Check, Send, AlertCircle, Copy } from "lucide-react";
-import { SegmentStats, CampaignRecommendation } from "../types";
+import React, { useState, useEffect, useRef } from "react";
+import { Sparkles, Send, Bot, User, Trash2, ArrowRight, CornerDownLeft, AlertCircle } from "lucide-react";
+import { SegmentStats } from "../types";
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+}
 
 interface AIInsightsPanelProps {
   segmentStats: SegmentStats[];
 }
 
 export default function AIInsightsPanel({ segmentStats }: AIInsightsPanelProps) {
-  const [selectedSegment, setSelectedSegment] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
-  const [recommendation, setRecommendation] = useState<CampaignRecommendation | null>(null);
-  const [errorString, setErrorString] = useState<string | null>(null);
-  const [copySuccess, setCopySuccess] = useState<boolean>(false);
+  const [messages, setMessages] = useState<Message[]>(() => [
+    {
+      id: "welcome",
+      role: "assistant",
+      content: `👋 **Welcome to the Bestchoice AI Growth Intelligence Center!**
 
-  // Default initial configuration selection
-  useEffect(() => {
-    if (segmentStats.length > 0 && !selectedSegment) {
-      setSelectedSegment(segmentStats[0].segment);
+I am your **AI Growth Specialist**, grounded in your real-time customer ledger statistics. I'm ready to answer any questions about your customer behaviors, loyalty cohorts, or marketing campaign ideas.
+
+**Here is what you can ask me:**
+- "How can we increase the purchase frequency of our *About to Sleep* group?"
+- "Draft a high-impact re-engagement workflow for our *At Risk* segment."
+- "Explain how Recency, Frequency, and Monetary parameters calculate Customer Lifetime Value (CLV)."
+- "Give me 3 actionable ways to transition *Loyal Customers* into *Champions*."
+
+Let me know what you would like to brainstorm!`,
+      timestamp: new Date()
     }
-  }, [segmentStats, selectedSegment]);
+  ]);
 
-  const handleFetchInsights = async (segmentName: string) => {
-    const statsObj = segmentStats.find(s => s.segment === segmentName);
-    if (!statsObj) return;
+  const [inputValue, setInputValue] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [errorString, setErrorString] = useState<string | null>(null);
 
-    setLoading(true);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll logic when a new message appears
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, loading]);
+
+  // Pre-configured loyalty suggestion chips
+  const suggestionChips = [
+    {
+      label: "📈 CLV Expansion",
+      prompt: "Give me 3 actionable tips to increase the average order value (AOV) and customer lifetime value (CLV) across all active segments."
+    },
+    {
+      label: "🔔 Winback Campaigns",
+      prompt: "What specific discount or loyalty campaign works best for winning back 'Hibernating / Lost' and 'Can't Lose Them' customers?"
+    },
+    {
+      label: "💎 VIP Premium Care",
+      prompt: "How do we maximize the retention rate and brand advocacy of our 'Champions / Power Users' segment?"
+    },
+    {
+      label: "📊 Segment Breakdown",
+      prompt: "Can you analyze our current customer segment list and advise which group offers the largest immediate revenue growth potential?"
+    }
+  ];
+
+  const handleSendMessage = async (textToSend: string) => {
+    const trimmedText = textToSend.trim();
+    if (!trimmedText) return;
+
+    // 1. Append user message
+    const userMsg: Message = {
+      id: `usr-${Date.now()}`,
+      role: "user",
+      content: trimmedText,
+      timestamp: new Date()
+    };
+
+    setInputValue("");
     setErrorString(null);
-    setRecommendation(null);
+    setLoading(true);
+
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
 
     try {
-      const response = await fetch("/api/smart-campaign-suggestions", {
+      // 2. Format history for our endpoint
+      const formattedHistory = updatedMessages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+
+      // 3. Post request to our chatbot API
+      const response = await fetch("/api/growth-chatbot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          segment: segmentName,
-          stats: statsObj
+          messages: formattedHistory,
+          segmentStatsContext: segmentStats
         })
       });
 
@@ -43,145 +109,309 @@ export default function AIInsightsPanel({ segmentStats }: AIInsightsPanelProps) 
         throw new Error(result.error || "The AI system failed to compile response.");
       }
 
-      setRecommendation(result.data);
+      // 4. Append assistant reply
+      const assistantMsg: Message = {
+        id: `ai-${Date.now()}`,
+        role: "assistant",
+        content: result.text,
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, assistantMsg]);
     } catch (err: any) {
-      setErrorString(err.message || "An error occurred calling the Gemini AI engine.");
+      setErrorString(err.message || "An error occurred calling the Bestchoice AI engine.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (selectedSegment) {
-      handleFetchInsights(selectedSegment);
+  const handleClearHistory = () => {
+    if (window.confirm("Are you sure you want to clear your current conversation history?")) {
+      setMessages([
+        {
+          id: "welcome-reset",
+          role: "assistant",
+          content: "Chat history cleared. Grounded in your ledger stats, what customer analytics questions can I answer for you now?",
+          timestamp: new Date()
+        }
+      ]);
+      setErrorString(null);
     }
-  }, [selectedSegment]);
+  };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopySuccess(true);
-    setTimeout(() => setCopySuccess(false), 2000);
+  // Safe client-side markdown formatter for precise styles
+  const parseInlineElements = (text: string): React.ReactNode[] => {
+    const boldRegex = /(\*\*.*?\*\*)/g;
+    const parts = text.split(boldRegex);
+    return parts.map((part, index) => {
+      // Bold handling
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return (
+          <strong key={index} className="font-extrabold text-zinc-950 dark:text-zinc-50 bg-zinc-100/40 dark:bg-zinc-800/20 px-0.5 rounded-sm">
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+      // Inline code or highlighted metrics
+      const codeRegex = /`([^`]+)`/g;
+      if (part.includes("`")) {
+        const subParts = part.split(/`([^`]+)`/);
+        return (
+          <span key={index}>
+            {subParts.map((sub, i) => {
+              if (i % 2 === 1) {
+                return (
+                  <code key={i} className="font-mono text-[11px] font-bold bg-muted bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-1 py-0.5 rounded border border-blue-100 dark:border-blue-900/30">
+                    {sub}
+                  </code>
+                );
+              }
+              return sub;
+            })}
+          </span>
+        );
+      }
+      return part;
+    });
+  };
+
+  const parseMarkdownLine = (line: string, lineIndex: number): React.ReactNode => {
+    const trimmed = line.trim();
+
+    // 1. Headings
+    if (trimmed.startsWith("### ")) {
+      return (
+        <h4 key={lineIndex} className="text-xs font-bold text-zinc-950 dark:text-zinc-50 uppercase tracking-wider mt-4 pb-1 select-text">
+          {parseInlineElements(trimmed.substring(4))}
+        </h4>
+      );
+    }
+    if (trimmed.startsWith("## ")) {
+      return (
+        <h3 key={lineIndex} className="text-sm font-black text-zinc-900 dark:text-zinc-50 tracking-tight mt-5 pb-1 select-text">
+          {parseInlineElements(trimmed.substring(3))}
+        </h3>
+      );
+    }
+    if (trimmed.startsWith("# ")) {
+      return (
+        <h2 key={lineIndex} className="text-base font-black text-zinc-900 dark:text-zinc-50 border-b border-zinc-100 dark:border-zinc-800 pb-1.5 mt-5 mb-2 select-text">
+          {parseInlineElements(trimmed.substring(2))}
+        </h2>
+      );
+    }
+
+    // 2. Unordered Bullet lists
+    if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+      return (
+        <div key={lineIndex} className="flex items-start gap-2 ml-4 my-1 select-text">
+          <span className="text-blue-500 mt-1 select-none font-bold">▪</span>
+          <span className="text-zinc-750 dark:text-zinc-350 text-xs font-semibold leading-relaxed">
+            {parseInlineElements(trimmed.substring(2))}
+          </span>
+        </div>
+      );
+    }
+
+    // 3. Numbered lists
+    const numMatch = trimmed.match(/^(\d+)\.\s(.*)/);
+    if (numMatch) {
+      const number = numMatch[1];
+      const content = numMatch[2];
+      return (
+        <div key={lineIndex} className="flex items-start gap-2 ml-4 my-1 select-text">
+          <span className="text-blue-500 font-mono font-bold text-[11px] mt-0.5 select-none">{number}.</span>
+          <span className="text-zinc-750 dark:text-zinc-350 text-xs font-semibold leading-relaxed">
+            {parseInlineElements(content)}
+          </span>
+        </div>
+      );
+    }
+
+    // 4. Empty block spacer
+    if (!trimmed) {
+      return <div key={lineIndex} className="h-2" />;
+    }
+
+    // 5. Standard paragraph text line
+    return (
+      <p key={lineIndex} className="text-zinc-700 dark:text-zinc-300 text-xs font-semibold leading-relaxed my-1 select-text">
+        {parseInlineElements(line)}
+      </p>
+    );
+  };
+
+  const renderContentWithFormatting = (content: string) => {
+    const lines = content.split("\n");
+    return (
+      <div className="space-y-1 select-text">
+        {lines.map((line, i) => parseMarkdownLine(line, i))}
+      </div>
+    );
   };
 
   return (
-    <div id="ai-insights-panel-wrapper" className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-1">
-      {/* Control Segment selector tabs */}
-      <div id="ai-insights-tabs-panel" className="col-span-12 lg:col-span-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-xs flex flex-col justify-between">
-        <div>
-          <div className="flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-855 pb-4 mb-4">
-            <Sparkles className="h-4.5 w-4.5 text-blue-500 shrink-0" />
-            <h3 className="font-bold text-zinc-900 dark:text-zinc-50 text-base">Growth Intelligence</h3>
+    <div id="ai-insights-panel-wrapper" className="w-full max-w-5xl mx-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden flex flex-col h-[650px]">
+      
+      {/* Dynamic Header */}
+      <div id="ai-insights-header" className="px-6 py-4.5 bg-zinc-50 dark:bg-zinc-950/40 border-b border-zinc-100 dark:border-zinc-800/60 flex items-center justify-between shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-blue-600/10 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-xl">
+            <Sparkles className="h-5 w-5 animate-pulse" />
           </div>
-          <p className="text-xs text-zinc-500 leading-normal mb-5 font-medium">
-            Select a target customer catalog segment. Our multi-model agent inspects their Recency ratios and checkout bounds to synthesize custom retention blueprints.
-          </p>
-
-          {/* Segment selection tabs list */}
-          <div id="segment-tabs-list" className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
-            {segmentStats.map((stat) => {
-              const isSelected = stat.segment === selectedSegment;
-              return (
-                <button
-                  id={`tab-segment-${stat.segment}`}
-                  key={stat.segment}
-                  onClick={() => setSelectedSegment(stat.segment)}
-                  className={`w-full flex items-center justify-between px-3.5 py-3 text-left rounded-lg transition-all border text-xs cursor-pointer ${
-                    isSelected
-                      ? "bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-400 font-extrabold"
-                      : "bg-white dark:bg-zinc-900 hover:bg-zinc-50/60 dark:hover:bg-zinc-850/40 border-zinc-100 dark:border-zinc-800/40 text-zinc-700 dark:text-zinc-400 font-semibold"
-                  }`}
-                >
-                  <div className="space-y-0.5 truncate pr-2">
-                    <span className="truncate block font-bold text-zinc-800 dark:text-zinc-100">{stat.segment}</span>
-                    <span className="text-[10px] text-zinc-400 select-none">{stat.count} customers ({stat.percentage}%)</span>
-                  </div>
-                  <ArrowRight className={`h-3 w-3 shrink-0 ${isSelected ? "opacity-100" : "opacity-0"}`} />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Small AI Credit line */}
-        <div className="mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-855 text-[10px] text-zinc-400 text-center font-medium select-none">
-          Powered securely by Google Gemini 3.5 Flash server-side.
-        </div>
-      </div>
-
-      {/* Recommendations details card */}
-      <div id="ai-insights-details-panel" className="col-span-12 lg:col-span-8 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-xs min-h-120 flex flex-col justify-between">
-        {loading ? (
-          <div id="insights-loading" className="flex-1 flex flex-col items-center justify-center space-y-4 p-20 select-none">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-            <span className="text-xs font-semibold text-zinc-400 animate-pulse">Running retention audit model...</span>
-          </div>
-        ) : errorString ? (
-          <div id="insights-error" className="flex-1 flex flex-col items-center justify-center p-8 space-y-3">
-            <AlertCircle className="h-10 w-10 text-red-500 shrink-0" />
-            <span className="text-sm font-extrabold text-red-600 dark:text-red-400 text-center">Incomplete Pipeline</span>
-            <p className="text-xs text-zinc-400 dark:text-zinc-500 text-center max-w-sm leading-relaxed font-medium">
-              {errorString}
+          <div>
+            <h3 className="font-extrabold text-zinc-900 dark:text-zinc-50 text-sm tracking-tight flex items-center gap-1.5 select-none">
+              Bestchoice AI Growth Copilot
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900 font-extrabold block leading-none">
+                ACTIVE OPERATIONS
+              </span>
+            </h3>
+            <p className="text-[10px] text-zinc-400 font-bold tracking-tight mt-0.5 select-none">
+              Grounded conversational recommendations updated to your raw cohort distribution segments.
             </p>
           </div>
-        ) : recommendation ? (
-          <div id="recommendation-content" className="space-y-6 animate-fade-in text-xs leading-normal">
-            {/* Header section */}
-            <div>
-              <span className="text-[10px] px-2 py-0.5 font-extrabold tracking-wider bg-blue-100/60 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 rounded border border-blue-200 dark:border-blue-900 uppercase">
-                Strategic Alignment Insights
+        </div>
+
+        {/* Action controls */}
+        <button
+          id="clear-chat-btn"
+          onClick={handleClearHistory}
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-zinc-200 dark:border-zinc-855 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-red-600 dark:hover:text-red-400 rounded-lg text-[10px] text-zinc-500 font-bold tracking-tight transition cursor-pointer shrink-0"
+          title="Reset Conversational History"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Clear Log
+        </button>
+      </div>
+
+      {/* Main chat body thread stream */}
+      <div id="ai-insights-chat-log" className="flex-1 p-6 overflow-y-auto bg-zinc-50/20 dark:bg-zinc-950/10 space-y-4">
+        {messages.map((msg) => {
+          const isAI = msg.role === "assistant";
+          return (
+            <div
+              key={msg.id}
+              className={`flex items-start gap-3.5 max-w-[85%] ${isAI ? "mr-auto" : "ml-auto flex-row-reverse"}`}
+            >
+              <div className={`p-2 rounded-xl shrink-0 ${
+                isAI 
+                  ? "bg-blue-600/10 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400" 
+                  : "bg-zinc-900 text-white dark:bg-zinc-1 dark:text-zinc-900"
+              }`}>
+                {isAI ? <Bot className="h-4 w-4" /> : <User className="h-4 w-4" />}
+              </div>
+
+              <div className={`p-4.5 rounded-2xl relative shadow-xs leading-normal select-text ${
+                isAI
+                  ? "bg-white dark:bg-zinc-850/80 text-zinc-805 dark:text-zinc-200 border border-zinc-100 dark:border-zinc-800 rounded-tl-sm"
+                  : "bg-blue-600 text-white rounded-tr-sm font-semibold text-xs"
+              }`}>
+                {isAI ? (
+                  renderContentWithFormatting(msg.content)
+                ) : (
+                  <p className="whitespace-pre-wrap leading-relaxed select-text">{msg.content}</p>
+                )}
+                
+                <span className={`block text-[9px] mt-2 block select-none ${isAI ? "text-zinc-400 font-medium" : "text-blue-100/90 font-bold"}`}>
+                  {msg.timestamp.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Dynamic AI loader bubble */}
+        {loading && (
+          <div className="flex items-start gap-4 max-w-[80%] mr-auto animate-pulse select-none">
+            <div className="p-2 rounded-xl bg-blue-600/10 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 shrink-0">
+              <Bot className="h-4 w-4 animate-bounce" />
+            </div>
+            <div className="bg-white dark:bg-zinc-850/85 text-zinc-500 border border-zinc-100 dark:border-zinc-800/80 p-4 rounded-2xl rounded-tl-sm flex items-center gap-2 shadow-xs">
+              <span className="text-[11px] font-bold text-zinc-450 tracking-tight animate-pulse">
+                Auditing cohort matrices and calculating re-engagement strategies...
               </span>
-              <p className="text-sm text-zinc-650 dark:text-zinc-350 mt-3 font-semibold text-zinc-700 leading-relaxed">
-                {recommendation.strategicOverview}
-              </p>
-            </div>
-
-            {/* Tactical bullets */}
-            <div className="space-y-3.5">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">Target Retention Tactics</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {recommendation.keyRecommendations.slice(0, 3).map((item, index) => (
-                  <div key={index} className="p-3 bg-zinc-50 dark:bg-zinc-950/20 rounded-xl border border-zinc-150 dark:border-zinc-800 flex flex-col justify-between">
-                    <span className="font-extrabold text-[10px] text-zinc-400 block pb-1">Tactic 0{index + 1}</span>
-                    <p className="font-semibold text-zinc-700 dark:text-zinc-300 text-xs mt-1 leading-normal pr-1">{item}</p>
-                  </div>
-                ))}
+              <div className="flex gap-1.5 pl-1 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-650 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-650 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-650 animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
             </div>
-
-            {/* Outreach copy preview card */}
-            <div className="border border-zinc-200 dark:border-zinc-800 bg-zinc-50/20 dark:bg-zinc-950/15 rounded-xl overflow-hidden mt-4">
-              <div className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-950/50 p-3 border-b border-zinc-200 dark:border-zinc-800">
-                <div className="flex items-center gap-1.5 font-bold uppercase text-[10px] text-zinc-450 dark:text-zinc-400">
-                  <Calendar className="h-4 w-4 text-zinc-400" />
-                  Outreach Copy Template
-                </div>
-                <button
-                  id="copy-template-insights-btn"
-                  onClick={() => copyToClipboard(recommendation.messageTemplateBody)}
-                  className="flex items-center gap-1 py-1 px-2 hover:bg-zinc-200 dark:hover:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded font-bold text-zinc-600 dark:text-zinc-300 transition text-[9px] cursor-pointer"
-                >
-                  {copySuccess ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
-                  {copySuccess ? "Copied" : "Copy Template"}
-                </button>
-              </div>
-              <div className="p-4 space-y-2.5 bg-white dark:bg-zinc-900/60">
-                <div>
-                  <span className="text-[10px] text-zinc-400 font-bold block">Recommended Subject Line</span>
-                  <p className="font-bold text-zinc-900 dark:text-zinc-50 text-sm">{recommendation.messageTemplateTitle}</p>
-                </div>
-                <div className="border-t border-dashed border-zinc-100 dark:border-zinc-855 pt-3.5 mt-2 max-h-48 overflow-y-auto font-mono text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed">
-                  {recommendation.messageTemplateBody}
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-4 select-none">
-            <Sparkles className="h-10 w-10 text-zinc-350 dark:text-zinc-650" />
-            <span className="text-xs font-semibold text-zinc-400">Select any target segment to initiate retention model predictions.</span>
           </div>
         )}
+
+        {/* Inline error alerts */}
+        {errorString && (
+          <div id="chat-api-error" className="p-4.5 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-400 rounded-xl flex items-start gap-3 text-xs max-w-xl mx-auto">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-red-500" />
+            <div className="space-y-1">
+              <p className="font-extrabold">Copilot Request Interrupted</p>
+              <p className="leading-relaxed font-semibold">{errorString}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Reference marker for auto-scroll anchor */}
+        <div ref={messagesEndRef} />
       </div>
+
+      {/* Suggestion Chips and Input Control deck */}
+      <div id="ai-insights-control-deck" className="px-6 py-5.5 bg-zinc-50 dark:bg-zinc-950/40 border-t border-zinc-100 dark:border-zinc-800/60 space-y-4">
+        
+        {/* Chips row */}
+        <div id="suggestion-chips-grid" className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none select-none">
+          {suggestionChips.map((chip, idx) => (
+            <button
+              id={`chip-${idx}`}
+              key={idx}
+              onClick={() => handleSendMessage(chip.prompt)}
+              disabled={loading}
+              className="px-3 py-2 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-855 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/80 bg-white dark:bg-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed rounded-full text-[10px] font-bold tracking-tight transition shrink-0 cursor-pointer flex items-center gap-1.5"
+            >
+              {chip.label}
+              <ArrowRight className="h-3 w-3 text-zinc-400" />
+            </button>
+          ))}
+        </div>
+
+        {/* Dynamic chat input */}
+        <form
+          id="chat-input-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSendMessage(inputValue);
+          }}
+          className="flex items-center gap-2.5"
+        >
+          <div className="flex-1 relative">
+            <input
+              id="chatbot-prompt-input"
+              type="text"
+              required
+              disabled={loading}
+              placeholder="Ask me anything about customer retention strategies, discount incentives, or cohort statistics..."
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              className="w-full pl-4.5 pr-14 py-3 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 disabled:bg-zinc-50 dark:disabled:bg-zinc-950/40 disabled:cursor-not-allowed text-xs font-bold rounded-2xl text-zinc-800 dark:text-zinc-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/15 focus:border-blue-500 placeholder-zinc-400 shadow-inner"
+            />
+            {/* Corner decorator text */}
+            <span className="absolute right-3.5 top-3.5 hidden sm:flex items-center gap-0.5 text-[9px] text-zinc-400 font-extrabold select-none bg-zinc-50 dark:bg-zinc-855 px-1 py-0.5 rounded border border-zinc-150 dark:border-zinc-800">
+              <CornerDownLeft className="h-2 w-2" />
+              Enter
+            </span>
+          </div>
+
+          <button
+            id="submit-prompt-btn"
+            type="submit"
+            disabled={loading || !inputValue.trim()}
+            className="p-3 bg-blue-600 hover:bg-blue-750 text-white disabled:bg-zinc-300 dark:disabled:bg-zinc-800 disabled:cursor-not-allowed rounded-xl transition cursor-pointer shadow-md shadow-blue-500/10 aspect-square"
+            title="Send growth query"
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        </form>
+      </div>
+
     </div>
   );
 }

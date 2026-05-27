@@ -80,6 +80,53 @@ Specifically, please return your recommendations formatted as JSON with the foll
     }
   });
 
+  // API Route - Conversational Growth Chatbot
+  app.post("/api/growth-chatbot", async (req, res) => {
+    try {
+      const { messages, segmentStatsContext } = req.body;
+      
+      const ai = getGeminiClient();
+      
+      // Map message history to Gemini contents format
+      const contents = messages.map((m: any) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content || "" }]
+      }));
+      
+      const contextString = segmentStatsContext && segmentStatsContext.length > 0 ? 
+        `Here are the current enterprise-wide customer segment stats from our live ledger database:
+${JSON.stringify(segmentStatsContext, null, 2)}` : "No segments have been computed yet.";
+      
+      const systemInstruction = `You are "Bestchoice AI Growth Specialist", an elite customer retention scientist, marketing director, and CRM copilot built into the Bestchoice CLV Predictor application.
+Your mission is to help the user design top-tier customer re-engagement campaigns, explain cohort retention, interpret Recency-Frequency-Monetary (RFM) analytics, calculate Customer Lifetime Value (CLV), and answer high-impact business growth questions.
+
+${contextString}
+
+Guidelines for your responses:
+- Speak in a friendly, extremely professional, and insightful tone.
+- Give highly actionable, mathematically-sound business strategies.
+- Ground your analysis in the real-time customer segment cohort stats provided. Reference specific segment counts or percentages where helpful.
+- Keep responses clean, and format them beautifully using markdown (using bold points, numbered lists, bullet points, and code styling for metrics).
+- Avoid raw JSON output or backend data structures unless the user explicitly requests them. Always be a human-like strategic partner first.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction,
+        },
+      });
+      
+      res.json({ success: true, text: response.text || "I was unable to formulate a response. Please try reframing your growth recommendation." });
+    } catch (error: any) {
+      console.error("API error in growth chatbot:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message || "An internal error occurred running Gemini conversational generation." 
+      });
+    }
+  });
+
   // API Route - Generate custom re-engagement templates for single customers
   app.post("/api/personal-reengagement-generator", async (req, res) => {
     try {

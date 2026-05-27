@@ -60,7 +60,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-1.5">
                 <h1 className="text-sm font-black uppercase tracking-wider text-zinc-900 dark:text-zinc-50 select-none">
-                  Vanguard CLV Predictor
+                  Bestchoice CLV Predictor
                 </h1>
                 <span className="inline-block text-[9px] font-sans font-black px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900 leading-none">
                   v2.8
@@ -199,7 +199,7 @@ export default function App() {
       <footer id="application-footer" className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 py-6 px-6 mt-12 text-center text-xs text-zinc-400 select-none">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <p className="font-medium text-zinc-500 dark:text-zinc-400">
-            © 2026 Vanguard Analytics Platform. Customer Intelligence & CLV Prediction System.
+            © 2026 Bestchoice Analytics Platform. Customer Intelligence & CLV Prediction System.
           </p>
           <div className="flex items-center gap-3">
             <span className="hover:text-zinc-650 transition cursor-help">Status: Active Operations</span>

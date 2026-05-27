@@ -833,7 +833,7 @@ export default function RFMExplorer({ customers, transactions, onDataLoaded }: R
             {/* Slideover Footer */}
             <div id="drawer-footer" className="p-4 bg-zinc-50 dark:bg-zinc-950/40 border-t border-zinc-100 dark:border-zinc-800/65 text-center">
               <span className="text-[10px] font-medium text-zinc-400">
-                Powered by Vanguard Customer Intelligence Engine
+                Powered by Bestchoice Customer Intelligence Engine
               </span>
             </div>
           </div>
